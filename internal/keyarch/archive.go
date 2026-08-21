@@ -34,12 +34,10 @@ func (a *Archiver) Archive(certID string, material []byte) error {
 	}
 	path := filepath.Join(a.root, "keys", certID+".key")
 	if err := store.WriteFileAtomic(path, material); err != nil {
-		a.state.AppendAudit(store.AuditEntry{
-			ID:     "audit-" + certID,
-			Event:  "key_archive_failed",
-			Detail: "KEY:" + string(material),
-			At:     store.NowUTC(),
-		})
+		// Archive failure takes an independent, sanitized path: only the
+		// cert id is audited through the guarded sink. Key material must
+		// never enter the audit trail, which has no encryption protection.
+		_ = a.audit.Record("key_archive_failed", "cert="+certID)
 		return fmt.Errorf("archive key %s: %w", certID, err)
 	}
 	a.state.PutKey(&store.KeyRecord{CertID: certID, Status: "archived"})
