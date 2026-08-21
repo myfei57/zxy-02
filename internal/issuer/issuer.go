@@ -6,7 +6,6 @@ import (
 
 	"github.com/google/uuid"
 
-	"certbridge/internal/enrollment"
 	"certbridge/internal/store"
 )
 
@@ -34,7 +33,12 @@ func (i *Issuer) Issue(requestID string) (*store.Certificate, error) {
 	if req.Status != store.StatusApproved {
 		return nil, ErrNotApproved
 	}
-	snapshot := enrollment.ParseCSR(req.Raw)
+	// Bind issuance to the approved snapshot exactly as the reviewer saw it.
+	// Re-parsing req.Raw here would diverge from the approved content — for
+	// example it skips SanitizeSubject and would pick up any tampering of the
+	// raw bytes between approval and issuance. The snapshot is already
+	// validated at submit and revalidated at approval time.
+	snapshot := req.Snapshot
 	serial := i.pool.Allocate()
 	cert := BuildCertificate(snapshot, serial, 1)
 	cert.ID = uuid.NewString()
