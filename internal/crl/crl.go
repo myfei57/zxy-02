@@ -14,13 +14,16 @@ func NewService(state *store.State) *Service {
 	return &Service{state: state}
 }
 
-// Append stores entries durably. Version advancement happens at publish
-// time, never before the entries are on disk.
+// Append stores entries durably and only then advances the version, so a
+// crash mid-append can never leave the version ahead of the entries on
+// disk. A client reading version N is guaranteed that every entry promised
+// by that version is already persisted; the revoked serial can never be
+// silently absent from a CRL the client treats as current.
 func (s *Service) Append(entries ...store.RevocationEntry) error {
-	if err := s.AdvanceVersion(); err != nil {
+	if err := persistEntries(s.state, entries...); err != nil {
 		return err
 	}
-	return persistEntries(s.state, entries...)
+	return s.AdvanceVersion()
 }
 
 // Entries returns all stored revocation entries.
