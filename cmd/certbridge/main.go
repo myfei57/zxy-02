@@ -27,6 +27,14 @@ func main() {
 		log.Fatalf("load state: %v", err)
 	}
 	pool := issuer.NewSerialPool(1000)
+	// Rebuild the consumed set from certificates already on disk so a restart
+	// never reissues a serial that was previously handed out.
+	certs := state.ListCertificates()
+	serials := make([]int64, 0, len(certs))
+	for _, c := range certs {
+		serials = append(serials, c.Serial)
+	}
+	pool.Rehydrate(serials)
 	issuerSvc := issuer.NewIssuer(state, pool)
 	crlSvc := crl.NewService(state)
 	cache := verify.NewCache()
