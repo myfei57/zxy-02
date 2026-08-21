@@ -81,8 +81,10 @@ func (m *WindowManager) Recover(certID string, _ int64) {
 	m.state.PutWindow(window)
 }
 
-// RenewCertificate issues the next generation and keeps the new certificate
-// active without touching revocation records.
+// RenewCertificate issues the next generation and supersedes the previous
+// certificate. The revocation entry is bound to the superseded certificate's
+// serial and generation so the new active certificate is never mistaken for
+// revoked.
 func (m *WindowManager) RenewCertificate(certID string, issue func(generation int64) (*store.Certificate, error)) (*store.Certificate, error) {
 	cert, ok := m.state.Certificate(certID)
 	if !ok {
@@ -92,11 +94,22 @@ func (m *WindowManager) RenewCertificate(certID string, issue func(generation in
 	if err != nil {
 		return nil, err
 	}
-	_ = m.state.AppendRevocation(store.RevocationEntry{
-		Serial:     next.Serial,
-		Reason:     "unspecified",
-		Generation: next.Generation,
+	// Revoke the superseded generation, not the fresh one. Persist the state
+	// transition and append a CRL entry bound to the old certificate's
+	// serial/generation; binding to next would land the active certificate on
+	// the CRL and fail every handshake it presents.
+	cert.Status = store.StatusRevoked
+	cert.Reason = "superseded"
+	if err := m.state.PutCertificate(cert); err != nil {
+		return nil, err
+	}
+	if err := m.state.AppendRevocation(store.RevocationEntry{
+		Serial:     cert.Serial,
+		Reason:     "superseded",
+		Generation: cert.Generation,
 		RevokedAt:  store.NowUTC(),
-	})
+	}); err != nil {
+		return nil, err
+	}
 	return next, nil
 }
