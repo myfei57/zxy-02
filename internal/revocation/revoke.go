@@ -34,5 +34,12 @@ func (s *Service) RevokeCertificate(certID, reason string) error {
 	if err := s.crl.Append(entry); err != nil {
 		return err
 	}
-	return s.state.PutCertificate(cert)
+	if err := s.state.PutCertificate(cert); err != nil {
+		return err
+	}
+	// Synchronously invalidate the cached status so no verification path
+	// can observe the pre-revocation active state after this returns; the
+	// next lookup must read the durable revoked state.
+	s.cache.Invalidate(certID)
+	return nil
 }
